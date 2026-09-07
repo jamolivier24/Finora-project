@@ -1,23 +1,38 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { palette, styles } from '@/styles/index.styles';
-
 const periods = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 type Currency = 'USD' | 'RWF';
 const fallbackUsdToRwf = 1400;
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  message: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+};
+
 export default function HomeScreen() {
-  const { demoEmail } = useLocalSearchParams<{ demoEmail?: string }>();
+  const { demoEmail, income, expenses, currency: currencyParam } = useLocalSearchParams<{
+    demoEmail?: string;
+    income?: string;
+    expenses?: string;
+    currency?: string;
+  }>();
 
   if (demoEmail) {
     return (
       <Dashboard
         email={demoEmail}
-        onSignOut={() => router.replace('/auth')}
+        demoEmail={demoEmail}
+        initialIncome={income}
+        initialExpenses={expenses}
+        initialCurrency={currencyParam}
       />
     );
   }
@@ -25,19 +40,35 @@ export default function HomeScreen() {
   return <Redirect href="/auth" />;
 }
 
-function Dashboard({ email, onSignOut }: { email: string; onSignOut: () => void }) {
+function Dashboard({ email, demoEmail, initialIncome, initialExpenses, initialCurrency }: { email: string; demoEmail: string; initialIncome?: string; initialExpenses?: string; initialCurrency?: string }) {
   const firstName = email.split('@')[0] || 'there';
-  const [monthlyIncome, setMonthlyIncome] = useState('4000');
-  const [monthlyExpenses, setMonthlyExpenses] = useState('1187.40');
-  const [incomeInput, setIncomeInput] = useState('4000');
-  const [expensesInput, setExpensesInput] = useState('1187.40');
-  const [currency, setCurrency] = useState<Currency>('USD');
+  const [monthlyIncome, setMonthlyIncome] = useState(initialIncome ?? ' ');
+  const [monthlyExpenses, setMonthlyExpenses] = useState(initialExpenses ?? ' ');
+  const [incomeInput, setIncomeInput] = useState(' ');
+  const [expensesInput, setExpensesInput] = useState(' ');
+  const [currency, setCurrency] = useState<Currency>(initialCurrency === 'RWF' ? 'RWF' : 'USD');
   const [usdToRwf, setUsdToRwf] = useState(fallbackUsdToRwf);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const monthlyIncomeRef = useRef(monthlyIncome);
   const monthlyExpensesRef = useRef(monthlyExpenses);
 
   monthlyIncomeRef.current = monthlyIncome;
   monthlyExpensesRef.current = monthlyExpenses;
+
+  useEffect(() => {
+    if (initialIncome !== undefined) {
+      setMonthlyIncome(initialIncome);
+      setIncomeInput(formatInputAmount(parseAmount(initialIncome), initialCurrency === 'RWF' ? 'RWF' : 'USD', usdToRwf));
+    }
+    if (initialExpenses !== undefined) {
+      setMonthlyExpenses(initialExpenses);
+      setExpensesInput(formatInputAmount(parseAmount(initialExpenses), initialCurrency === 'RWF' ? 'RWF' : 'USD', usdToRwf));
+    }
+    if (initialCurrency === 'USD' || initialCurrency === 'RWF') {
+      setCurrency(initialCurrency);
+    }
+  }, [initialCurrency, initialExpenses, initialIncome, usdToRwf]);
 
   useEffect(() => {
     let active = true;
@@ -74,6 +105,11 @@ function Dashboard({ email, onSignOut }: { email: string; onSignOut: () => void 
   const advice = getSpendingAdvice(expenseRate, income, expenses, currency, usdToRwf);
   const currencySymbol = currency === 'USD' ? '$' : 'FRW';
 
+  const openNotifications = () => {
+    setNotificationsVisible(true);
+    setNotifications(buildLocalNotifications(income, expenses, currency, usdToRwf));
+  };
+
   return (
     <SafeAreaView style={styles.dashboardSafeArea}>
       <ScrollView
@@ -88,12 +124,41 @@ function Dashboard({ email, onSignOut }: { email: string; onSignOut: () => void 
 
           <Pressable
             style={styles.notificationButton}
-            onPress={onSignOut}
-            accessibilityLabel="Sign out"
+            onPress={openNotifications}
+            accessibilityLabel="Open notifications"
           >
-            <Ionicons name="log-out-outline" size={22} color={palette.ink} />
+            <Ionicons name="notifications-outline" size={22} color={palette.ink} />
           </Pressable>
         </View>
+
+        <Modal visible={notificationsVisible} animationType="slide" transparent onRequestClose={() => setNotificationsVisible(false)}>
+          <View style={styles.notificationOverlay}>
+            <View style={styles.notificationSheet}>
+              <View style={styles.notificationHeader}>
+                <View>
+                  <Text style={styles.notificationTitle}>Notifications</Text>
+                  <Text style={styles.notificationSubtitle}>Your financial pulse, in one place</Text>
+                </View>
+                <Pressable onPress={() => setNotificationsVisible(false)} accessibilityLabel="Close notifications" style={styles.closeButton}>
+                  <Ionicons name="close" size={21} color={palette.ink} />
+                </Pressable>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {notifications.map((notification) => (
+                  <View key={notification.id} style={styles.notificationItem}>
+                    <View style={[styles.notificationIcon, { backgroundColor: `${notification.color}20` }]}>
+                      <Ionicons name={notification.icon} size={19} color={notification.color} />
+                    </View>
+                    <View style={styles.notificationCopy}>
+                      <Text style={styles.notificationItemTitle}>{notification.title}</Text>
+                      <Text style={styles.notificationMessage}>{notification.message}</Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.currencyToggle}>
           <Text style={styles.currencyToggleLabel}>Currency</Text>
@@ -224,6 +289,7 @@ function Dashboard({ email, onSignOut }: { email: string; onSignOut: () => void 
                       income: String(income),
                       expenses: String(expenses),
                       currency,
+                      demoEmail,
                     },
                   })
                 }
@@ -281,6 +347,26 @@ function Dashboard({ email, onSignOut }: { email: string; onSignOut: () => void 
           <Pressable
             key={icon}
             style={[styles.navItem, index === 0 && styles.navItemActive]}
+            onPress={index === 1 ? () => router.push({
+              pathname: '/analysis/[period]',
+              params: {
+                period: 'monthly',
+                income: String(income),
+                expenses: String(expenses),
+                currency,
+                demoEmail,
+              },
+            }) : index === 2 ? () => router.push({
+              pathname: '/transactions',
+              params: { income: String(income), expenses: String(expenses), currency, demoEmail },
+            }) : index === 3 ? () => router.push({
+              pathname: '/categories',
+              params: { income: String(income), expenses: String(expenses), currency, demoEmail },
+            }) : index === 4 ? () => router.push({
+              pathname: '/profile',
+              params: { income: String(income), expenses: String(expenses), currency, demoEmail },
+            }) : undefined}
+            accessibilityLabel={index === 0 ? 'Home' : index === 1 ? 'Analysis' : index === 2 ? 'Transactions' : index === 3 ? 'Categories' : index === 4 ? 'Profile' : undefined}
           >
             <Ionicons
               name={icon as keyof typeof Ionicons.glyphMap}
@@ -297,6 +383,20 @@ function Dashboard({ email, onSignOut }: { email: string; onSignOut: () => void 
 function parseAmount(value: string) {
   const amount = Number.parseFloat(value.replace(',', '.'));
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}
+
+function buildLocalNotifications(income: number, expenses: number, currency: Currency, rate: number): NotificationItem[] {
+  const expenseRate = income > 0 ? expenses / income : 0;
+  const amount = (value: number) => formatAmount(value, currency, rate);
+
+  return [
+    { id: 'income', title: 'Income received', message: income ? `Your planned monthly income is ${amount(income)}.` : 'Add your income to track money received.', icon: 'arrow-down-circle-outline', color: '#078C72' },
+    { id: 'expenses', title: 'Expenses recorded', message: expenses ? `${amount(expenses)} is recorded for this month.` : 'No expenses have been recorded yet.', icon: 'receipt-outline', color: '#1477F8' },
+    { id: 'budget', title: 'Budget warning', message: expenseRate > 0.8 ? 'You have used more than 80% of your monthly income.' : 'Your spending is within the current budget range.', icon: expenseRate > 0.8 ? 'warning-outline' : 'shield-checkmark-outline', color: expenseRate > 0.8 ? '#B04B4B' : '#078C72' },
+    { id: 'bills', title: 'Bill payment reminder', message: 'Review upcoming bills before their due dates.', icon: 'calendar-outline', color: '#B57900' },
+    { id: 'savings', title: 'Savings goal', message: income > expenses ? `You have ${amount(income - expenses)} available to put toward a savings goal.` : 'Reduce expenses to make room for your savings goal.', icon: 'star-outline', color: '#8A5A00' },
+    { id: 'summary', title: 'Monthly financial summary', message: `Balance: ${amount(Math.max(income - expenses, 0))}. Expenses use ${Math.round(expenseRate * 100)}% of income.`, icon: 'bar-chart-outline', color: '#173B3D' },
+  ];
 }
 
 function formatAmount(amount: number, currency: Currency = 'USD', rate = fallbackUsdToRwf) {
@@ -362,7 +462,7 @@ function MoneyInput({ label, value, currency, onChangeText }: { label: string; v
         <Text style={styles.currency}>{currency === 'USD' ? '$' : '$'}</Text>
         <TextInput
           value={value}
-          onChangeText={onChangeText}
+          onChangeText={onChangeText}  
           keyboardType="decimal-pad"
           placeholder="0.00"
           placeholderTextColor="#8BA69A"
@@ -421,4 +521,3 @@ function Transaction({
     </View>
   );
 }
-

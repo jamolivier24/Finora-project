@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { styles as dashboardStyles } from '@/styles/index.styles';
+import { NotificationsPanel } from '@/components/notifications-panel';
+
 const palette = { ink: '#173B3D', teal: '#08C7A1', muted: '#668381', background: '#ECF8ED' };
 const periods = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 type Period = (typeof periods)[number];
@@ -18,14 +21,16 @@ const periodData: Record<Period, { income: string; expense: string; caption: str
 };
 
 export default function AnalysisScreen() {
-  const { period, income: incomeParam, expenses: expensesParam, currency: currencyParam, rate: rateParam } = useLocalSearchParams<{
+  const { period, income: incomeParam, expenses: expensesParam, currency: currencyParam, rate: rateParam, demoEmail } = useLocalSearchParams<{
     period?: string;
     income?: string;
     expenses?: string;
     currency?: string;
     rate?: string;
+    demoEmail?: string;
   }>();
   const [searchVisible, setSearchVisible] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const today = new Date();
@@ -49,6 +54,7 @@ export default function AnalysisScreen() {
   const selectedIncome = monthlyIncome * multiplier;
   const selectedExpenses = monthlyExpenses * multiplier;
   const balance = Math.max(selectedIncome - selectedExpenses, 0);
+  const advice = getAnalysisAdvice(selectedIncome, selectedExpenses, currency, rate);
   const chartPoints = data.labels
     .map((label, index) => ({ label, value: data.values[index] }))
     .filter(({ label }) => label.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -56,12 +62,15 @@ export default function AnalysisScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton} accessibilityLabel="Go back">
+          <Pressable onPress={() => router.replace({ pathname: '/', params: { demoEmail, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency } })} style={styles.backButton} accessibilityLabel="Go back to home screen">
             <Ionicons name="arrow-back" size={21} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Analysis</Text>
-          <View style={styles.headerSpacer} />
+          <Pressable onPress={() => setNotificationsVisible(true)} style={dashboardStyles.notificationButton} accessibilityLabel="Open notifications">
+            <Ionicons name="notifications-outline" size={20} color={palette.ink} />
+          </Pressable>
         </View>
+        <NotificationsPanel visible={notificationsVisible} onClose={() => setNotificationsVisible(false)} income={selectedIncome} expenses={selectedExpenses} currency={currency} />
         <View style={styles.summaryRow}>
           <View><Text style={styles.summaryLabel}>Total Balance</Text><Text style={styles.balance}>{formatAmount(balance, currency, rate)}</Text></View>
           <View style={styles.divider} />
@@ -70,7 +79,7 @@ export default function AnalysisScreen() {
         <View style={styles.periodSwitcher}>
           {periods.map((item) => {
             const label = item[0].toUpperCase() + item.slice(1);
-            return <Pressable key={item} onPress={() => router.replace({ pathname: '/analysis/[period]', params: { period: item, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency, rate: String(rate) } })} style={[styles.period, item === selectedPeriod && styles.periodActive]}><Text style={[styles.periodText, item === selectedPeriod && styles.periodTextActive]}>{label}</Text></Pressable>;
+            return <Pressable key={item} onPress={() => router.replace({ pathname: '/analysis/[period]', params: { period: item, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency, rate: String(rate), demoEmail } })} style={[styles.period, item === selectedPeriod && styles.periodActive]}><Text style={[styles.periodText, item === selectedPeriod && styles.periodTextActive]}>{label}</Text></Pressable>;
           })}
         </View>
         <View style={styles.chartCard}>
@@ -141,15 +150,60 @@ export default function AnalysisScreen() {
           </View>
           <View style={styles.labels}>{chartPoints.map(({ label }) => <Text key={label} style={styles.label}>{label}</Text>)}</View>
         </View>
+        <View style={adviceStyles.card}>
+          <Ionicons name={advice.icon} size={22} color={advice.color} />
+          <View style={adviceStyles.copy}>
+            <Text style={[adviceStyles.title, { color: advice.color }]}>{advice.title}</Text>
+            <Text style={adviceStyles.message}>{advice.message}</Text>
+          </View>
+        </View>
         <Text style={styles.caption}>{data.caption} · {selectedDate}</Text>
         <View style={styles.totals}><View><Ionicons name="arrow-up-outline" size={18} color={palette.teal} /><Text style={styles.totalLabel}>Income</Text><Text style={styles.totalValue}>{formatAmount(selectedIncome, currency, rate)}</Text></View><View><Ionicons name="arrow-down-outline" size={18} color="#1477F8" /><Text style={styles.totalLabel}>Expense</Text><Text style={styles.totalValueBlue}>{formatAmount(selectedExpenses, currency, rate)}</Text></View></View>
       </ScrollView>
+      <View style={dashboardStyles.bottomNav}>
+        {['home-outline', 'search-outline', 'swap-horizontal-outline', 'layers-outline', 'person-outline'].map((icon, index) => (
+          <Pressable
+            key={icon}
+            onPress={index === 0 ? () => router.replace({ pathname: '/', params: { demoEmail, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency } }) : index === 2 ? () => router.push({ pathname: '/transactions', params: { demoEmail, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency } }) : index === 3 ? () => router.push({ pathname: '/categories', params: { demoEmail, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency } }) : index === 4 ? () => router.push({ pathname: '/profile', params: { demoEmail, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency } }) : undefined}
+            style={[dashboardStyles.navItem, index === 1 && dashboardStyles.navItemActive]}
+            accessibilityLabel={index === 0 ? 'Home' : index === 1 ? 'Analysis' : undefined}
+          >
+            <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={23} color={palette.ink} />
+          </Pressable>
+        ))}
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.background }, content: { flexGrow: 1, paddingBottom: 30 }, header: { backgroundColor: palette.teal, paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, backButton: { width: 34, height: 34, justifyContent: 'center' }, headerTitle: { color: palette.ink, fontSize: 14, fontWeight: '700' }, headerSpacer: { width: 34 }, summaryRow: { backgroundColor: palette.teal, paddingHorizontal: 24, paddingBottom: 22, flexDirection: 'row', alignItems: 'center', gap: 18 }, summaryLabel: { color: palette.ink, fontSize: 8 }, balance: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', marginTop: 3 }, expense: { color: '#1477F8', fontSize: 15, fontWeight: '800', marginTop: 3 }, divider: { height: 31, width: 1, backgroundColor: '#8CE2C3' }, periodSwitcher: { margin: 18, padding: 3, borderRadius: 18, backgroundColor: '#D8F2DC', flexDirection: 'row' }, period: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 15 }, periodActive: { backgroundColor: palette.teal }, periodText: { color: palette.ink, fontSize: 10 }, periodTextActive: { fontWeight: '800' }, chartCard: { marginHorizontal: 12, padding: 16, borderRadius: 24, backgroundColor: '#D8F2DC' }, chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, chartTitle: { color: palette.ink, fontSize: 11, fontWeight: '600' }, chartActions: { flexDirection: 'row', gap: 9 }, chart: { height: 148, marginTop: 13, position: 'relative' }, gridLine: { position: 'absolute', left: 0, right: 0, top: 20, borderTopWidth: 1, borderColor: '#B6DCCA', borderStyle: 'dashed' }, gridLineMiddle: { top: 74 }, gridLineBottom: { top: 128 }, bars: { height: 132, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', paddingHorizontal: 8 }, barGroup: { height: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 3 }, barIncome: { width: 5, minHeight: 12, backgroundColor: palette.teal, borderRadius: 3 }, barExpense: { width: 5, minHeight: 12, backgroundColor: '#1477F8', borderRadius: 3 }, labels: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 4 }, label: { color: palette.muted, fontSize: 8 }, caption: { textAlign: 'center', color: palette.muted, fontSize: 10, marginTop: 12 }, totals: { marginTop: 18, flexDirection: 'row', justifyContent: 'space-evenly', textAlign: 'center' }, totalLabel: { color: palette.muted, fontSize: 10, marginTop: 3, textAlign: 'center' }, totalValue: { color: palette.ink, fontSize: 13, fontWeight: '800', marginTop: 3 }, totalValueBlue: { color: '#1477F8', fontSize: 13, fontWeight: '800', marginTop: 3 },
+});
+
+const adviceStyles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginHorizontal: 12,
+    marginTop: 16,
+    padding: 15,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+  },
+  copy: {
+    flex: 1,
+    marginLeft: 11,
+  },
+  title: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  message: {
+    color: palette.muted,
+    fontSize: 11,
+    lineHeight: 17,
+  },
 });
 
 const actionStyles = StyleSheet.create({
@@ -251,6 +305,46 @@ function getCalendarDays(date: Date) {
 function parseAmount(value?: string) {
   const amount = Number.parseFloat(value ?? '0');
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
+}
+
+function getAnalysisAdvice(income: number, expenses: number, currency: Currency, rate: number) {
+  if (!income) {
+    return {
+      icon: 'information-circle-outline' as const,
+      color: palette.muted,
+      title: 'Add your income',
+      message: 'Enter your income on Home to receive a saving recommendation.',
+    };
+  }
+
+  const expenseRate = expenses / income;
+  const savings = Math.max(income - expenses, 0);
+  const savingsAmount = formatAmount(savings, currency, rate);
+
+  if (expenseRate <= 0.5) {
+    return {
+      icon: 'checkmark-circle-outline' as const,
+      color: '#078C72',
+      title: 'Strong saving position',
+      message: `You are keeping ${savingsAmount} available in this period. Consider putting part of it toward your savings goal.`,
+    };
+  }
+
+  if (expenseRate <= 0.8) {
+    return {
+      icon: 'alert-circle-outline' as const,
+      color: '#B57900',
+      title: 'Room to save more',
+      message: `You are using ${Math.round(expenseRate * 100)}% of your income. Set aside a small amount first, then plan the rest of your spending.`,
+    };
+  }
+
+  return {
+    icon: 'warning-outline' as const,
+    color: '#B04B4B',
+    title: 'Protect your savings',
+    message: `Expenses use ${Math.round(expenseRate * 100)}% of your income. Review non-essential spending before adding to your savings goal.`,
+  };
 }
 
 function formatAmount(amount: number, currency: Currency, rate: number) {
