@@ -1,17 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { styles as dashboardStyles } from '@/styles/index.styles';
 import { NotificationsPanel } from '@/components/notifications-panel';
+import { styles as dashboardStyles } from '@/styles/index.styles';
 
 const palette = { ink: '#173B3D', teal: '#08C7A1', muted: '#668381', background: '#ECF8ED' };
 const periods = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 type Period = (typeof periods)[number];
 type Currency = 'USD' | 'RWF';
 const fallbackUsdToRwf = 1400;
+
+// My Targets — savings goals shown as percentage rings on filled cards.
+const targets: { label: string; percent: number }[] = [
+  { label: 'Travel', percent: 30 },
+  { label: 'Car', percent: 50 },
+];
 
 const periodData: Record<Period, { income: string; expense: string; caption: string; labels: string[]; values: number[] }> = {
   daily: { income: '$4,120.00', expense: '$1,187.40', caption: 'Today', labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], values: [42, 65, 38, 58, 76, 48, 69] },
@@ -29,13 +35,10 @@ export default function AnalysisScreen() {
     rate?: string;
     demoEmail?: string;
   }>();
-  const [searchVisible, setSearchVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
-  const [calendarVisible, setCalendarVisible] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const today = new Date();
   const todayKey = formatDateKey(today);
-  const [selectedDate, setSelectedDate] = useState(todayKey);
+  const selectedDate = todayKey;
 
   if (!periods.includes(period as Period)) return <Redirect href="/" />;
 
@@ -55,9 +58,17 @@ export default function AnalysisScreen() {
   const selectedExpenses = monthlyExpenses * multiplier;
   const balance = Math.max(selectedIncome - selectedExpenses, 0);
   const advice = getAnalysisAdvice(selectedIncome, selectedExpenses, currency, rate);
-  const chartPoints = data.labels
-    .map((label, index) => ({ label, value: data.values[index] }))
-    .filter(({ label }) => label.toLowerCase().includes(searchQuery.toLowerCase()));
+  const spendPercent = selectedIncome > 0 ? Math.min(100, Math.round((selectedExpenses / selectedIncome) * 100)) : 0;
+  const spendInsight = !selectedIncome
+    ? 'Add your income on Home to see insights.'
+    : spendPercent <= 50
+      ? `${spendPercent}% of your expenses, looks good.`
+      : spendPercent <= 80
+        ? `${spendPercent}% of your expenses, keep an eye on it.`
+        : `${spendPercent}% of your expenses, spending is high.`;
+  const chartPoints = data.labels.map((label, index) => ({ label, value: data.values[index] }));
+  const goSearch = () => router.push({ pathname: '/analysis/search', params: { period: selectedPeriod, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency, rate: String(rate), demoEmail } });
+  const goCalendar = () => router.push({ pathname: '/analysis/calendar', params: { period: selectedPeriod, income: String(monthlyIncome), expenses: String(monthlyExpenses), currency, rate: String(rate), demoEmail } });
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -66,8 +77,8 @@ export default function AnalysisScreen() {
             <Ionicons name="arrow-back" size={21} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Analysis</Text>
-          <Pressable onPress={() => setNotificationsVisible(true)} style={dashboardStyles.notificationButton} accessibilityLabel="Open notifications">
-            <Ionicons name="notifications-outline" size={20} color={palette.ink} />
+          <Pressable onPress={() => setNotificationsVisible(true)} style={styles.headerIconButton} accessibilityLabel="Open notifications">
+            <Ionicons name="notifications-outline" size={18} color={palette.ink} />
           </Pressable>
         </View>
         <NotificationsPanel visible={notificationsVisible} onClose={() => setNotificationsVisible(false)} income={selectedIncome} expenses={selectedExpenses} currency={currency} />
@@ -75,6 +86,20 @@ export default function AnalysisScreen() {
           <View><Text style={styles.summaryLabel}>Total Balance</Text><Text style={styles.balance}>{formatAmount(balance, currency, rate)}</Text></View>
           <View style={styles.divider} />
           <View><Text style={styles.summaryLabel}>Total Expense</Text><Text style={styles.expense}>{formatNegativeAmount(selectedExpenses, currency, rate)}</Text></View>
+        </View>
+        <View style={styles.insightSection}>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${Math.max(spendPercent, 18)}%` }]}>
+              <Text style={styles.progressFillText}>{spendPercent}%</Text>
+            </View>
+            {spendPercent < 78 && (
+              <Text style={styles.progressTrackText}>of {formatAmount(selectedIncome, currency, rate)}</Text>
+            )}
+          </View>
+          <View style={styles.insightRow}>
+            <Ionicons name={advice.icon} size={12} color={palette.ink} />
+            <Text style={styles.insightText}>{spendInsight}</Text>
+          </View>
         </View>
         <View style={styles.periodSwitcher}>
           {periods.map((item) => {
@@ -87,63 +112,21 @@ export default function AnalysisScreen() {
             <Text style={styles.chartTitle}>Income &amp; Expenses</Text>
             <View style={styles.chartActions}>
               <Pressable
-                onPress={() => setSearchVisible((visible) => !visible)}
+                onPress={goSearch}
                 accessibilityLabel="Search analysis"
                 style={actionStyles.chartActionButton}
               >
-                <Ionicons name="search-outline" size={17} color={palette.ink} />
+                <Ionicons name="search-outline" size={14} color="#FFFFFF" />
               </Pressable>
               <Pressable
-                onPress={() => setCalendarVisible((visible) => !visible)}
+                onPress={goCalendar}
                 accessibilityLabel="Choose analysis date"
-                style={actionStyles.chartActionButton}
+                style={actionStyles.chartActionButtonAlt}
               >
-                <Ionicons name="calendar-outline" size={17} color={palette.ink} />
+                <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
               </Pressable>
             </View>
           </View>
-          {searchVisible && (
-            <TextInput
-              autoFocus
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search periods"
-              placeholderTextColor="#668381"
-              style={actionStyles.chartSearchInput}
-            />
-          )}
-          {calendarVisible && (
-            <View style={actionStyles.calendarCard}>
-              <View style={actionStyles.calendarHeader}>
-                <Text style={actionStyles.calendarMonth}>
-                  {today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                </Text>
-                <Text style={actionStyles.calendarSelected}>Selected: {selectedDate}</Text>
-              </View>
-              <View style={actionStyles.weekdayRow}>
-                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
-                  <Text key={day} style={actionStyles.weekday}>{day}</Text>
-                ))}
-              </View>
-              <View style={actionStyles.calendarGrid}>
-                {getCalendarDays(today).map((day, index) => {
-                  if (!day) return <View key={`empty-${index}`} style={actionStyles.dayCell} />;
-                  const dayKey = formatDateKey(new Date(today.getFullYear(), today.getMonth(), day));
-                  const isToday = dayKey === todayKey;
-                  const isSelected = dayKey === selectedDate;
-                  return (
-                    <Pressable
-                      key={day}
-                      onPress={() => setSelectedDate(dayKey)}
-                      style={[actionStyles.dayCell, isToday && actionStyles.todayCell, isSelected && actionStyles.selectedCell]}
-                    >
-                      <Text style={[actionStyles.dayText, (isToday || isSelected) && actionStyles.selectedDayText]}>{day}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          )}
           <View style={styles.chart}>
             <View style={styles.gridLine} /><View style={[styles.gridLine, styles.gridLineMiddle]} /><View style={[styles.gridLine, styles.gridLineBottom]} />
             <View style={styles.bars}>{chartPoints.map(({ label, value }) => <View key={label} style={styles.barGroup}><View style={[styles.barIncome, { height: `${value}%` }]} /><View style={[styles.barExpense, { height: `${Math.max(24, value - 17)}%` }]} /></View>)}</View>
@@ -158,7 +141,26 @@ export default function AnalysisScreen() {
           </View>
         </View>
         <Text style={styles.caption}>{data.caption} · {selectedDate}</Text>
-        <View style={styles.totals}><View><Ionicons name="arrow-up-outline" size={18} color={palette.teal} /><Text style={styles.totalLabel}>Income</Text><Text style={styles.totalValue}>{formatAmount(selectedIncome, currency, rate)}</Text></View><View><Ionicons name="arrow-down-outline" size={18} color="#1477F8" /><Text style={styles.totalLabel}>Expense</Text><Text style={styles.totalValueBlue}>{formatAmount(selectedExpenses, currency, rate)}</Text></View></View>
+        <View style={styles.totals}>
+          <View style={styles.totalColumn}>
+            <View style={styles.totalIconBadge}><Ionicons name="arrow-up-outline" size={16} color={palette.teal} /></View>
+            <Text style={styles.totalLabel}>Income</Text>
+            <Text style={styles.totalValue}>{formatAmount(selectedIncome, currency, rate)}</Text>
+          </View>
+          <View style={styles.totalColumn}>
+            <View style={styles.totalIconBadgeBlue}><Ionicons name="arrow-down-outline" size={16} color="#1477F8" /></View>
+            <Text style={styles.totalLabel}>Expense</Text>
+            <Text style={styles.totalValueBlue}>{formatAmount(selectedExpenses, currency, rate)}</Text>
+          </View>
+        </View>
+        <View style={styles.targetsSection}>
+          <Text style={styles.targetsTitle}>My Targets</Text>
+          <View style={styles.targetsRow}>
+            {targets.map((target) => (
+              <TargetCard key={target.label} percent={target.percent} label={target.label} />
+            ))}
+          </View>
+        </View>
       </ScrollView>
       <View style={dashboardStyles.bottomNav}>
         {['home-outline', 'search-outline', 'swap-horizontal-outline', 'layers-outline', 'person-outline'].map((icon, index) => (
@@ -176,8 +178,97 @@ export default function AnalysisScreen() {
   );
 }
 
+// Circular percentage ring on a filled card — built from two overlapping
+// half-circle borders (the standard trick for a progress ring without a
+// chart library), matching the "My Targets" mockup.
+function TargetCard({ percent, label }: { percent: number; label: string }) {
+  const size = 72;
+  const thickness = 6;
+  const clamped = Math.max(0, Math.min(100, percent));
+  const rotation = (clamped / 100) * 360;
+  const firstHalf = Math.min(rotation, 180);
+  const secondHalf = Math.max(rotation - 180, 0);
+
+  return (
+    <View style={targetStyles.card}>
+      <View style={[targetStyles.ring, { width: size, height: size, borderRadius: size / 2 }]}>
+        <View
+          style={[
+            targetStyles.track,
+            { width: size, height: size, borderRadius: size / 2, borderWidth: thickness, borderColor: 'rgba(255,255,255,0.5)' },
+          ]}
+        />
+        <View style={[targetStyles.halfClip, { width: size / 2, height: size, right: 0 }]}>
+          <View
+            style={[
+              targetStyles.halfCircle,
+              {
+                left: -size / 2,
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                borderWidth: thickness,
+                borderColor: '#0D3FA6',
+                borderLeftColor: 'transparent',
+                borderBottomColor: 'transparent',
+                transform: [{ rotate: `${firstHalf}deg` }],
+              },
+            ]}
+          />
+        </View>
+        {secondHalf > 0 && (
+          <View style={[targetStyles.halfClip, { width: size / 2, height: size, left: 0 }]}>
+            <View
+              style={[
+                targetStyles.halfCircle,
+                {
+                  left: 0,
+                  width: size,
+                  height: size,
+                  borderRadius: size / 2,
+                  borderWidth: thickness,
+                  borderColor: '#0D3FA6',
+                  borderRightColor: 'transparent',
+                  borderTopColor: 'transparent',
+                  transform: [{ rotate: `${secondHalf}deg` }],
+                },
+              ]}
+            />
+          </View>
+        )}
+        <Text style={targetStyles.percentText}>{clamped}%</Text>
+      </View>
+      <Text style={targetStyles.label}>{label}</Text>
+    </View>
+  );
+}
+
+const targetStyles = StyleSheet.create({
+  card: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#6DB6FE', borderRadius: 22, paddingVertical: 18, gap: 10 },
+  ring: { alignItems: 'center', justifyContent: 'center' },
+  track: { position: 'absolute' },
+  halfClip: { position: 'absolute', overflow: 'hidden' },
+  halfCircle: { position: 'absolute' },
+  percentText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  label: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+});
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.background }, content: { flexGrow: 1, paddingBottom: 30 }, header: { backgroundColor: palette.teal, paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, backButton: { width: 34, height: 34, justifyContent: 'center' }, headerTitle: { color: palette.ink, fontSize: 14, fontWeight: '700' }, headerSpacer: { width: 34 }, summaryRow: { backgroundColor: palette.teal, paddingHorizontal: 24, paddingBottom: 22, flexDirection: 'row', alignItems: 'center', gap: 18 }, summaryLabel: { color: palette.ink, fontSize: 8 }, balance: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', marginTop: 3 }, expense: { color: '#1477F8', fontSize: 15, fontWeight: '800', marginTop: 3 }, divider: { height: 31, width: 1, backgroundColor: '#8CE2C3' }, periodSwitcher: { margin: 18, padding: 3, borderRadius: 18, backgroundColor: '#D8F2DC', flexDirection: 'row' }, period: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 15 }, periodActive: { backgroundColor: palette.teal }, periodText: { color: palette.ink, fontSize: 10 }, periodTextActive: { fontWeight: '800' }, chartCard: { marginHorizontal: 12, padding: 16, borderRadius: 24, backgroundColor: '#D8F2DC' }, chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, chartTitle: { color: palette.ink, fontSize: 11, fontWeight: '600' }, chartActions: { flexDirection: 'row', gap: 9 }, chart: { height: 148, marginTop: 13, position: 'relative' }, gridLine: { position: 'absolute', left: 0, right: 0, top: 20, borderTopWidth: 1, borderColor: '#B6DCCA', borderStyle: 'dashed' }, gridLineMiddle: { top: 74 }, gridLineBottom: { top: 128 }, bars: { height: 132, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', paddingHorizontal: 8 }, barGroup: { height: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 3 }, barIncome: { width: 5, minHeight: 12, backgroundColor: palette.teal, borderRadius: 3 }, barExpense: { width: 5, minHeight: 12, backgroundColor: '#1477F8', borderRadius: 3 }, labels: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 4 }, label: { color: palette.muted, fontSize: 8 }, caption: { textAlign: 'center', color: palette.muted, fontSize: 10, marginTop: 12 }, totals: { marginTop: 18, flexDirection: 'row', justifyContent: 'space-evenly', textAlign: 'center' }, totalLabel: { color: palette.muted, fontSize: 10, marginTop: 3, textAlign: 'center' }, totalValue: { color: palette.ink, fontSize: 13, fontWeight: '800', marginTop: 3 }, totalValueBlue: { color: '#1477F8', fontSize: 13, fontWeight: '800', marginTop: 3 },
+  headerIconButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  insightSection: { backgroundColor: palette.teal, paddingHorizontal: 24, paddingBottom: 20 },
+  progressTrack: { height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.9)', flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
+  progressFill: { height: 28, minWidth: 54, borderRadius: 14, backgroundColor: palette.ink, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  progressFillText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  progressTrackText: { position: 'absolute', right: 14, color: palette.ink, fontSize: 9, fontWeight: '700' },
+  insightRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  insightText: { color: palette.ink, fontSize: 9, fontWeight: '600' },
+  totalColumn: { alignItems: 'center' },
+  totalIconBadge: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#D8F2DC', alignItems: 'center', justifyContent: 'center' },
+  totalIconBadgeBlue: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#E4EEFE', alignItems: 'center', justifyContent: 'center' },
+  targetsSection: { marginTop: 22, paddingHorizontal: 16, paddingBottom: 4 },
+  targetsTitle: { color: palette.ink, fontSize: 13, fontWeight: '800', marginBottom: 12, marginLeft: 4 },
+  targetsRow: { flexDirection: 'row', gap: 14 },
 });
 
 const adviceStyles = StyleSheet.create({
@@ -212,80 +303,16 @@ const actionStyles = StyleSheet.create({
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
-  },
-  chartSearchInput: {
-    height: 36,
-    marginTop: 10,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#B6DCCA',
-    borderRadius: 9,
-    backgroundColor: '#F8FCF8',
-    color: palette.ink,
-    fontSize: 11,
-  },
-  calendarCard: {
-    marginTop: 10,
-    padding: 12,
     borderRadius: 12,
-    backgroundColor: '#F8FCF8',
+    backgroundColor: palette.teal,
   },
-  calendarHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  calendarMonth: {
-    color: palette.ink,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  calendarSelected: {
-    color: palette.muted,
-    fontSize: 9,
-  },
-  weekdayRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 5,
-  },
-  weekday: {
-    width: '14.28%',
-    color: palette.muted,
-    fontSize: 9,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  dayCell: {
-    width: '14.28%',
-    height: 30,
+  chartActionButtonAlt: {
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
-  },
-  todayCell: {
+    borderRadius: 8,
     backgroundColor: palette.teal,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: palette.ink,
-  },
-  selectedCell: {
-    borderWidth: 2,
-    borderColor: palette.ink,
-  },
-  dayText: {
-    color: palette.ink,
-    fontSize: 10,
-  },
-  selectedDayText: {
-    fontWeight: '800',
-    color: '#FFFFFF',
   },
 });
 
@@ -294,12 +321,6 @@ function formatDateKey(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function getCalendarDays(date: Date) {
-  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  return [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, index) => index + 1)];
 }
 
 function parseAmount(value?: string) {
