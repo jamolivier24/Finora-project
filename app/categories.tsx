@@ -17,7 +17,7 @@ type Params = {
 };
 
 export default function CategoriesScreen() {
-  const params = useLocalSearchParams<Params>();
+  const params = useLocalSearchParams<Params>() ?? {};
   const income = parseAmount(params.income);
   const expenses = parseAmount(params.expenses);
   const currency = params.currency === "RWF" ? "RWF" : "USD";

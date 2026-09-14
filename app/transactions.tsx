@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { palette, styles as dashboardStyles } from '@/styles/index.styles';
+import { styles as dashboardStyles, palette } from '@/styles/index.styles';
 
 type Currency = 'USD' | 'RWF';
 
@@ -17,12 +17,13 @@ const transactionRows = [
 ];
 
 export default function TransactionsScreen() {
-  const { demoEmail, income: incomeParam, expenses: expensesParam, currency: currencyParam } = useLocalSearchParams<{
+  const params = useLocalSearchParams<{
     demoEmail?: string;
     income?: string;
     expenses?: string;
     currency?: string;
-  }>();
+  }>() ?? {};
+  const { demoEmail, income: incomeParam, expenses: expensesParam, currency: currencyParam } = params;
   const currency: Currency = currencyParam === 'RWF' ? 'RWF' : 'USD';
   const income = incomeParam ?? '';
   const expenses = expensesParam ?? '';
